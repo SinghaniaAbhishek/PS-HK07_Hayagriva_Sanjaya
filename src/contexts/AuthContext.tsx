@@ -33,6 +33,9 @@ interface AuthContextType {
   devices: Device[];
   addGuardian: (guardian: Omit<User, 'id' | 'role'> & { password: string }) => void;
   linkDeviceToGuardian: (deviceId: string, guardianId: string) => void;
+  unlinkDeviceFromGuardian: (deviceId: string, guardianId: string) => void;
+  removeGuardian: (guardianId: string) => void;
+  removeDevice: (deviceId: string) => void;
   addDevice: (deviceId: string) => void;
   updateDeviceInfo: (deviceId: string, data: Partial<Device>) => void;
 }
@@ -104,20 +107,53 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const addGuardian = (data: Omit<User, 'id' | 'role'> & { password: string }) => {
+    const exists = users.some(u => u.email.toLowerCase() === data.email.toLowerCase());
+    if (exists) return;
     const newUser = { ...data, id: `guardian-${Date.now()}`, role: 'guardian' as const, linkedDevices: [] };
     setUsers(prev => [...prev, newUser]);
   };
 
   const linkDeviceToGuardian = (deviceId: string, guardianId: string) => {
-    setUsers(prev => prev.map(u =>
-      u.id === guardianId ? { ...u, linkedDevices: [...(u.linkedDevices || []), deviceId] } : u
-    ));
+    // Unlink from previous guardian first
+    setUsers(prev => prev.map(u => {
+      const linked = u.linkedDevices || [];
+      if (u.id === guardianId) {
+        return linked.includes(deviceId) ? u : { ...u, linkedDevices: [...linked, deviceId] };
+      }
+      return { ...u, linkedDevices: linked.filter(id => id !== deviceId) };
+    }));
     setDevices(prev => prev.map(d =>
       d.id === deviceId ? { ...d, assignedTo: guardianId } : d
     ));
   };
 
+  const unlinkDeviceFromGuardian = (deviceId: string, guardianId: string) => {
+    setUsers(prev => prev.map(u =>
+      u.id === guardianId ? { ...u, linkedDevices: (u.linkedDevices || []).filter(id => id !== deviceId) } : u
+    ));
+    setDevices(prev => prev.map(d =>
+      d.id === deviceId ? { ...d, assignedTo: '' } : d
+    ));
+  };
+
+  const removeGuardian = (guardianId: string) => {
+    setUsers(prev => prev.filter(u => u.id !== guardianId));
+    setDevices(prev => prev.map(d =>
+      d.assignedTo === guardianId ? { ...d, assignedTo: '' } : d
+    ));
+  };
+
+  const removeDevice = (deviceId: string) => {
+    setUsers(prev => prev.map(u => ({
+      ...u,
+      linkedDevices: (u.linkedDevices || []).filter(id => id !== deviceId),
+    })));
+    setDevices(prev => prev.filter(d => d.id !== deviceId));
+  };
+
   const addDevice = (deviceId: string) => {
+    const exists = devices.some(d => d.id === deviceId);
+    if (exists) return;
     const newDevice: Device = {
       id: deviceId, assignedTo: '', userName: '', userPhone: '', mentorPhone: '',
       gps: { lat: 28.6139, lng: 77.2090 }, battery: 100,
@@ -134,7 +170,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     <AuthContext.Provider value={{
       user, login, logout, isLoading,
       users: users.map(({ password, ...u }) => u),
-      devices, addGuardian, linkDeviceToGuardian, addDevice, updateDeviceInfo,
+      devices, addGuardian, linkDeviceToGuardian, unlinkDeviceFromGuardian, removeGuardian, removeDevice, addDevice, updateDeviceInfo,
     }}>
       {children}
     </AuthContext.Provider>

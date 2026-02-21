@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Eye, LogIn, AlertCircle } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { PageLoader } from '@/components/LoadingSpinner';
 
 const Login = () => {
   const [email, setEmail] = useState('');
@@ -28,7 +29,7 @@ const Login = () => {
     }
   };
 
-  if (user) return null;
+  if (user) return <PageLoader />;
 
   return (
     <div className="flex min-h-screen">

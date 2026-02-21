@@ -2,7 +2,9 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import DeviceMap from '@/components/DeviceMap';
-import { Eye, LogOut, Battery, Activity, Wifi, WifiOff, AlertTriangle, ChevronDown, Phone, User, MapPin, Vibrate, Camera, X } from 'lucide-react';
+import { Eye, LogOut, Battery, Activity, Wifi, WifiOff, AlertTriangle, ChevronDown, Phone, User, MapPin, Vibrate, Camera, X, Pencil } from 'lucide-react';
+import { ThemeToggle } from '@/components/ThemeToggle';
+import { toast } from 'sonner';
 
 const OFFLINE_THRESHOLD = 30000;
 
@@ -21,10 +23,15 @@ const Dashboard = () => {
   const selectedDevice = myDevices.find(d => d.id === selectedDeviceId) || myDevices[0];
 
   useEffect(() => {
-    if (myDevices.length > 0 && !selectedDeviceId) {
-      setSelectedDeviceId(myDevices[0].id);
+    if (myDevices.length > 0) {
+      const currentExists = myDevices.some(d => d.id === selectedDeviceId);
+      if (!selectedDeviceId || !currentExists) {
+        setSelectedDeviceId(myDevices[0].id);
+      }
+    } else {
+      setSelectedDeviceId('');
     }
-  }, [myDevices.length]);
+  }, [myDevices, selectedDeviceId]);
 
   useEffect(() => {
     if (selectedDevice && (!selectedDevice.userName || !selectedDevice.mentorPhone)) {
@@ -38,6 +45,17 @@ const Dashboard = () => {
       setSetupMode(false);
     }
   }, [selectedDevice?.id]);
+
+  const openEditProfile = () => {
+    if (selectedDevice) {
+      setSetupForm({
+        userName: selectedDevice.userName || '',
+        userPhone: selectedDevice.userPhone || '',
+        mentorPhone: selectedDevice.mentorPhone || '',
+      });
+      setSetupMode(true);
+    }
+  };
 
   useEffect(() => {
     if (!selectedDevice) return;
@@ -75,6 +93,7 @@ const Dashboard = () => {
     if (selectedDevice) {
       updateDeviceInfo(selectedDevice.id, setupForm);
       setSetupMode(false);
+      toast.success('User details updated successfully');
     }
   };
 
@@ -109,6 +128,7 @@ const Dashboard = () => {
                 <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               </div>
             )}
+            <ThemeToggle />
             <button onClick={() => { logout(); navigate('/login'); }} className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs text-muted-foreground hover:bg-secondary">
               <LogOut className="h-3.5 w-3.5" /> Logout
             </button>
@@ -116,12 +136,18 @@ const Dashboard = () => {
         </div>
       </header>
 
-      {/* Setup Modal */}
+      {/* Setup / Edit Profile Modal */}
       {setupMode && selectedDevice && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/50 backdrop-blur-sm">
           <div className="mx-4 w-full max-w-md rounded-2xl bg-card p-8 shadow-elevated">
-            <h2 className="mb-2 font-display text-xl font-bold text-foreground">Setup Device Profile</h2>
-            <p className="mb-6 text-sm text-muted-foreground">Complete the profile for {selectedDevice.id}</p>
+            <h2 className="mb-2 font-display text-xl font-bold text-foreground">
+              {selectedDevice.userName && selectedDevice.mentorPhone ? 'Edit User Details' : 'Setup Device Profile'}
+            </h2>
+            <p className="mb-6 text-sm text-muted-foreground">
+              {selectedDevice.userName && selectedDevice.mentorPhone
+                ? `Update the profile for ${selectedDevice.id}`
+                : `Complete the profile for ${selectedDevice.id}`}
+            </p>
             <form onSubmit={handleSetup} className="space-y-4">
               <div>
                 <label className="mb-1 block text-sm font-medium text-foreground">Disabled Person's Name</label>
@@ -138,7 +164,14 @@ const Dashboard = () => {
                 <input value={setupForm.mentorPhone} onChange={e => setSetupForm(p => ({ ...p, mentorPhone: e.target.value }))} required
                   className="w-full rounded-lg border border-input bg-background px-4 py-2.5 text-foreground focus:border-primary focus:outline-none" />
               </div>
-              <button type="submit" className="w-full rounded-lg bg-gradient-primary py-3 font-semibold text-primary-foreground">Save Profile</button>
+              <div className="flex gap-2">
+                <button type="button" onClick={() => setSetupMode(false)} className="flex-1 rounded-lg border border-border py-3 font-medium text-muted-foreground hover:bg-secondary">
+                  Cancel
+                </button>
+                <button type="submit" className="flex-1 rounded-lg bg-gradient-primary py-3 font-semibold text-primary-foreground">
+                  {selectedDevice.userName && selectedDevice.mentorPhone ? 'Update' : 'Save'} Profile
+                </button>
+              </div>
             </form>
           </div>
         </div>
@@ -151,14 +184,23 @@ const Dashboard = () => {
           {selectedDevice ? (
             <div className="space-y-5">
               <div className="rounded-xl border border-border bg-background p-4">
-                <div className="mb-3 flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
-                    <User className="h-5 w-5 text-primary" />
+                <div className="mb-3 flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
+                      <User className="h-5 w-5 text-primary" />
+                    </div>
+                    <div>
+                      <p className="font-display font-semibold text-foreground">{selectedDevice.userName || 'Not Set'}</p>
+                      <p className="text-xs text-muted-foreground">{selectedDevice.id}</p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="font-display font-semibold text-foreground">{selectedDevice.userName || 'Not Set'}</p>
-                    <p className="text-xs text-muted-foreground">{selectedDevice.id}</p>
-                  </div>
+                  <button
+                    onClick={openEditProfile}
+                    className="rounded-lg p-2 text-muted-foreground transition hover:bg-primary/10 hover:text-primary"
+                    title="Edit user details"
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </button>
                 </div>
                 <div className="space-y-2 text-sm">
                   <div className="flex items-center gap-2 text-muted-foreground"><Phone className="h-3.5 w-3.5" /> {selectedDevice.userPhone || 'Not set'}</div>

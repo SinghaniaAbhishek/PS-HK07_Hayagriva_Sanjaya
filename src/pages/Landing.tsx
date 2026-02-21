@@ -1,6 +1,8 @@
 import { useNavigate } from 'react-router-dom';
 import { MapPin, Shield, Bell, Wifi, Battery, Eye, Users, ChevronRight, Activity } from 'lucide-react';
-import heroStick from '@/assets/hero-stick.jpg';
+import { ThemeToggle } from '@/components/ThemeToggle';
+
+const heroStick = '/hero-stick.svg';
 
 const features = [
   { icon: MapPin, title: 'Real-Time Tracking', desc: 'Track your loved one\'s location live on an interactive map with precise GPS coordinates.' },
@@ -33,9 +35,12 @@ const Landing = () => {
             <a href="#how-it-works" className="text-sm text-muted-foreground transition hover:text-foreground">How It Works</a>
             <a href="#about" className="text-sm text-muted-foreground transition hover:text-foreground">About</a>
           </div>
-          <button onClick={() => navigate('/login')} className="rounded-lg bg-gradient-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground transition hover:opacity-90">
+          <div className="flex items-center gap-2">
+            <ThemeToggle />
+            <button onClick={() => navigate('/login')} className="rounded-lg bg-gradient-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground transition hover:opacity-90">
             Guardian Login
-          </button>
+            </button>
+          </div>
         </div>
       </nav>
 

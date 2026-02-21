@@ -1,12 +1,25 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
-import { Eye, LogOut, UserPlus, Link2, Plus, Users, HardDrive } from 'lucide-react';
+import { Eye, LogOut, UserPlus, Link2, Unlink, Plus, Users, HardDrive, Trash2 } from 'lucide-react';
+import { ThemeToggle } from '@/components/ThemeToggle';
+import { toast } from 'sonner';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 type TabId = 'guardians' | 'devices' | 'add-guardian' | 'add-device' | 'link';
 
 const Admin = () => {
-  const { user, logout, users, devices, addGuardian, linkDeviceToGuardian, addDevice } = useAuth();
+  const { user, logout, users, devices, addGuardian, linkDeviceToGuardian, unlinkDeviceFromGuardian, removeGuardian, removeDevice, addDevice } = useAuth();
+  const [confirmRemove, setConfirmRemove] = useState<{ type: 'guardian' | 'device'; id: string; name: string } | null>(null);
   const navigate = useNavigate();
   const [tab, setTab] = useState<TabId>('guardians');
   const [form, setForm] = useState({ name: '', email: '', password: '', phone: '' });
@@ -21,23 +34,48 @@ const Admin = () => {
 
   const handleAddGuardian = (e: React.FormEvent) => {
     e.preventDefault();
+    const exists = users.some(u => u.email.toLowerCase() === form.email.toLowerCase());
+    if (exists) {
+      toast.error('A guardian with this email already exists');
+      return;
+    }
     addGuardian({ ...form, linkedDevices: [] });
     setForm({ name: '', email: '', password: '', phone: '' });
     setTab('guardians');
+    toast.success('Guardian created successfully');
   };
 
   const handleAddDevice = (e: React.FormEvent) => {
     e.preventDefault();
+    if (devices.some(d => d.id === deviceId)) {
+      toast.error('A device with this ID already exists');
+      return;
+    }
     addDevice(deviceId);
     setDeviceId('');
     setTab('devices');
+    toast.success('Device registered successfully');
   };
 
   const handleLink = (e: React.FormEvent) => {
     e.preventDefault();
     linkDeviceToGuardian(linkForm.deviceId, linkForm.guardianId);
+    const guardian = guardians.find(g => g.id === linkForm.guardianId);
+    toast.success(`Device ${linkForm.deviceId} linked to ${guardian?.name || 'guardian'}`);
     setLinkForm({ deviceId: '', guardianId: '' });
     setTab('guardians');
+  };
+
+  const handleConfirmRemove = () => {
+    if (!confirmRemove) return;
+    if (confirmRemove.type === 'guardian') {
+      removeGuardian(confirmRemove.id);
+      toast.success(`Guardian ${confirmRemove.name} removed`);
+    } else {
+      removeDevice(confirmRemove.id);
+      toast.success(`Device ${confirmRemove.id} removed`);
+    }
+    setConfirmRemove(null);
   };
 
   const tabs: { id: TabId; label: string; icon: typeof Users }[] = [
@@ -59,9 +97,12 @@ const Admin = () => {
               <p className="text-xs text-muted-foreground">Manage guardians & devices</p>
             </div>
           </div>
-          <button onClick={() => { logout(); navigate('/login'); }} className="flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm text-muted-foreground transition hover:bg-secondary">
-            <LogOut className="h-4 w-4" /> Logout
-          </button>
+          <div className="flex items-center gap-2">
+            <ThemeToggle />
+            <button onClick={() => { logout(); navigate('/login'); }} className="flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm text-muted-foreground transition hover:bg-secondary">
+              <LogOut className="h-4 w-4" /> Logout
+            </button>
+          </div>
         </div>
       </header>
 
@@ -85,12 +126,32 @@ const Admin = () => {
               <div className="grid gap-4 md:grid-cols-2">
                 {guardians.map(g => (
                   <div key={g.id} className="rounded-xl border border-border bg-card p-5 shadow-card">
-                    <h3 className="font-display text-lg font-semibold text-foreground">{g.name}</h3>
-                    <p className="text-sm text-muted-foreground">{g.email}</p>
-                    {g.phone && <p className="text-sm text-muted-foreground">{g.phone}</p>}
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <h3 className="font-display text-lg font-semibold text-foreground">{g.name}</h3>
+                        <p className="text-sm text-muted-foreground">{g.email}</p>
+                        {g.phone && <p className="text-sm text-muted-foreground">{g.phone}</p>}
+                      </div>
+                      <button
+                        onClick={() => setConfirmRemove({ type: 'guardian', id: g.id, name: g.name })}
+                        className="rounded-lg p-2 text-muted-foreground transition hover:bg-destructive/10 hover:text-destructive"
+                        title="Remove guardian"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
                     <div className="mt-3 flex flex-wrap gap-2">
                       {(g.linkedDevices || []).map(d => (
-                        <span key={d} className="rounded-md bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">{d}</span>
+                        <span key={d} className="flex items-center gap-1 rounded-md bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">
+                          {d}
+                          <button
+                            onClick={() => { unlinkDeviceFromGuardian(d, g.id); toast.success(`Unlinked ${d}`); }}
+                            className="rounded p-0.5 hover:bg-primary/20"
+                            title="Unlink device"
+                          >
+                            <Unlink className="h-3 w-3" />
+                          </button>
+                        </span>
                       ))}
                       {(!g.linkedDevices || g.linkedDevices.length === 0) && <span className="text-xs text-muted-foreground">No devices linked</span>}
                     </div>
@@ -107,10 +168,21 @@ const Admin = () => {
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
               {devices.map(d => (
                 <div key={d.id} className="rounded-xl border border-border bg-card p-5 shadow-card">
-                  <h3 className="font-display font-semibold text-foreground">{d.id}</h3>
-                  <p className="text-sm text-muted-foreground">Assigned to: {users.find(u => u.id === d.assignedTo)?.name || 'Unassigned'}</p>
-                  <p className="text-sm text-muted-foreground">Battery: {d.battery}%</p>
-                  <p className="text-sm text-muted-foreground">User: {d.userName || 'Not set'}</p>
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <h3 className="font-display font-semibold text-foreground">{d.id}</h3>
+                      <p className="text-sm text-muted-foreground">Assigned to: {users.find(u => u.id === d.assignedTo)?.name || 'Unassigned'}</p>
+                      <p className="text-sm text-muted-foreground">Battery: {d.battery}%</p>
+                      <p className="text-sm text-muted-foreground">User: {d.userName || 'Not set'}</p>
+                    </div>
+                    <button
+                      onClick={() => setConfirmRemove({ type: 'device', id: d.id, name: d.id })}
+                      className="rounded-lg p-2 text-muted-foreground transition hover:bg-destructive/10 hover:text-destructive"
+                      title="Remove device"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -175,6 +247,27 @@ const Admin = () => {
           </div>
         )}
       </div>
+
+      <AlertDialog open={!!confirmRemove} onOpenChange={() => setConfirmRemove(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {confirmRemove?.type === 'guardian' ? 'Remove Guardian?' : 'Remove Device?'}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirmRemove?.type === 'guardian'
+                ? `This will remove ${confirmRemove.name} and unlink all their devices. This action cannot be undone.`
+                : `This will permanently remove device ${confirmRemove?.id} and unlink it from its guardian. This action cannot be undone.`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmRemove} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Remove
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
