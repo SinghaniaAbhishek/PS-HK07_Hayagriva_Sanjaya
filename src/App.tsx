@@ -8,15 +8,20 @@ import { PageLoader } from "@/components/LoadingSpinner";
 import Landing from "./pages/Landing";
 import Login from "./pages/Login";
 import Admin from "./pages/Admin";
+import AdminSetup from "./pages/AdminSetup";
 import Dashboard from "./pages/Dashboard";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
 
 const ProtectedRoute = ({ children, role }: { children: React.ReactNode; role?: string }) => {
-  const { user, isLoading } = useAuth();
+  const { user, isLoading, authError } = useAuth();
   if (isLoading) return <PageLoader />;
-  if (!user) return <Navigate to="/login" />;
+  if (!user) {
+    // If authenticated but no profile (authError about missing profile), redirect to setup
+    if (authError?.includes('User profile missing')) return <Navigate to="/setup" replace />;
+    return <Navigate to="/login" />;
+  }
   if (role && user.role !== role) {
     return <Navigate to={user.role === 'admin' ? '/admin' : '/dashboard'} />;
   }
@@ -28,6 +33,7 @@ const AppRoutes = () => {
     <Routes>
       <Route path="/" element={<Landing />} />
       <Route path="/login" element={<Login />} />
+      <Route path="/setup" element={<AdminSetup />} />
       <Route path="/admin" element={<ProtectedRoute role="admin"><Admin /></ProtectedRoute>} />
       <Route path="/dashboard" element={<ProtectedRoute role="guardian"><Dashboard /></ProtectedRoute>} />
       <Route path="*" element={<NotFound />} />

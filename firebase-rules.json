@@ -1,0 +1,33 @@
+{
+  "rules": {
+    "users": {
+      "$userId": {
+        ".read": "auth != null && (auth.uid == $userId || root.child('users').child(auth.uid).child('role').val() == 'admin')",
+        ".write": "auth != null && (auth.uid == $userId || root.child('users').child(auth.uid).child('role').val() == 'admin')",
+        "linkedDevices": {
+          ".read": "auth != null && (auth.uid == $userId || root.child('users').child(auth.uid).child('role').val() == 'admin')",
+          ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() == 'admin'"
+        }
+      }
+    },
+    "devices": {
+      ".read": "auth != null",
+      "$deviceId": {
+        ".read": "auth != null && (root.child('devices').child($deviceId).child('assignedTo').val() == auth.uid || root.child('users').child(auth.uid).child('role').val() == 'admin' || root.child('users').child(auth.uid).child('linkedDevices').hasChild($deviceId))",
+        ".write": "auth != null && (root.child('devices').child($deviceId).child('assignedTo').val() == auth.uid || root.child('users').child(auth.uid).child('role').val() == 'admin')",
+        "assignedTo": {
+          ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() == 'admin'"
+        },
+        "userName": {
+          ".write": "auth != null && (root.child('devices').child($deviceId).child('assignedTo').val() == auth.uid || root.child('users').child(auth.uid).child('role').val() == 'admin')"
+        },
+        "userPhone": {
+          ".write": "auth != null && (root.child('devices').child($deviceId).child('assignedTo').val() == auth.uid || root.child('users').child(auth.uid).child('role').val() == 'admin')"
+        },
+        "mentorPhone": {
+          ".write": "auth != null && (root.child('devices').child($deviceId).child('assignedTo').val() == auth.uid || root.child('users').child(auth.uid).child('role').val() == 'admin')"
+        }
+      }
+    }
+  }
+}

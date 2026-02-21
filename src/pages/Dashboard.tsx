@@ -17,6 +17,7 @@ const Dashboard = () => {
   const [showSnapshot, setShowSnapshot] = useState(false);
   const [setupMode, setSetupMode] = useState(false);
   const [setupForm, setSetupForm] = useState({ userName: '', userPhone: '', mentorPhone: '' });
+  const [editRequestedByUser, setEditRequestedByUser] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const myDevices = user?.role === 'guardian' ? devices.filter(d => (user.linkedDevices || []).includes(d.id)) : [];
@@ -34,20 +35,23 @@ const Dashboard = () => {
   }, [myDevices, selectedDeviceId]);
 
   useEffect(() => {
-    if (selectedDevice && (!selectedDevice.userName || !selectedDevice.mentorPhone)) {
+    if (!selectedDevice) return;
+    if (!selectedDevice.userName || !selectedDevice.mentorPhone) {
+      setEditRequestedByUser(false);
       setSetupMode(true);
       setSetupForm({
         userName: selectedDevice.userName || '',
         userPhone: selectedDevice.userPhone || '',
         mentorPhone: selectedDevice.mentorPhone || '',
       });
-    } else {
+    } else if (!editRequestedByUser) {
       setSetupMode(false);
     }
-  }, [selectedDevice?.id]);
+  }, [selectedDevice?.id, editRequestedByUser]);
 
   const openEditProfile = () => {
     if (selectedDevice) {
+      setEditRequestedByUser(true);
       setSetupForm({
         userName: selectedDevice.userName || '',
         userPhone: selectedDevice.userPhone || '',
@@ -88,13 +92,23 @@ const Dashboard = () => {
     setAlerts(prev => prev.map(a => a.id === id ? { ...a, dismissed: true } : a));
   };
 
-  const handleSetup = (e: React.FormEvent) => {
+  const handleSetup = async (e: React.FormEvent) => {
     e.preventDefault();
     if (selectedDevice) {
-      updateDeviceInfo(selectedDevice.id, setupForm);
-      setSetupMode(false);
-      toast.success('User details updated successfully');
+      try {
+        await updateDeviceInfo(selectedDevice.id, setupForm);
+        setSetupMode(false);
+        setEditRequestedByUser(false);
+        toast.success('User details updated successfully');
+      } catch (error: any) {
+        toast.error(error.message || 'Failed to update user details');
+      }
     }
+  };
+
+  const closeSetupModal = () => {
+    setSetupMode(false);
+    setEditRequestedByUser(false);
   };
 
   const activeAlerts = alerts.filter(a => !a.dismissed);
@@ -136,9 +150,9 @@ const Dashboard = () => {
         </div>
       </header>
 
-      {/* Setup / Edit Profile Modal */}
+      {/* Setup / Edit Profile Modal - z-[9999] to appear above Leaflet map (z-index 400+) */}
       {setupMode && selectedDevice && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/50 backdrop-blur-sm">
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-foreground/50 backdrop-blur-sm p-4">
           <div className="mx-4 w-full max-w-md rounded-2xl bg-card p-8 shadow-elevated">
             <h2 className="mb-2 font-display text-xl font-bold text-foreground">
               {selectedDevice.userName && selectedDevice.mentorPhone ? 'Edit User Details' : 'Setup Device Profile'}
@@ -165,7 +179,7 @@ const Dashboard = () => {
                   className="w-full rounded-lg border border-input bg-background px-4 py-2.5 text-foreground focus:border-primary focus:outline-none" />
               </div>
               <div className="flex gap-2">
-                <button type="button" onClick={() => setSetupMode(false)} className="flex-1 rounded-lg border border-border py-3 font-medium text-muted-foreground hover:bg-secondary">
+                <button type="button" onClick={closeSetupModal} className="flex-1 rounded-lg border border-border py-3 font-medium text-muted-foreground hover:bg-secondary">
                   Cancel
                 </button>
                 <button type="submit" className="flex-1 rounded-lg bg-gradient-primary py-3 font-semibold text-primary-foreground">
@@ -180,7 +194,7 @@ const Dashboard = () => {
       {/* Main Content */}
       <div className="flex flex-1 overflow-hidden">
         {/* Left Panel */}
-        <div className="w-80 flex-shrink-0 overflow-y-auto border-r border-border bg-card p-5">
+        <div className="relative z-10 w-80 flex-shrink-0 overflow-y-auto border-r border-border bg-card p-5">
           {selectedDevice ? (
             <div className="space-y-5">
               <div className="rounded-xl border border-border bg-background p-4">
@@ -195,8 +209,9 @@ const Dashboard = () => {
                     </div>
                   </div>
                   <button
+                    type="button"
                     onClick={openEditProfile}
-                    className="rounded-lg p-2 text-muted-foreground transition hover:bg-primary/10 hover:text-primary"
+                    className="min-h-[44px] min-w-[44px] rounded-lg p-2 text-muted-foreground transition hover:bg-primary/10 hover:text-primary"
                     title="Edit user details"
                   >
                     <Pencil className="h-4 w-4" />
@@ -285,7 +300,7 @@ const Dashboard = () => {
       </div>
 
       {showSnapshot && selectedDevice?.imageURL && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/50 backdrop-blur-sm" onClick={() => setShowSnapshot(false)}>
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-foreground/50 backdrop-blur-sm p-4" onClick={() => setShowSnapshot(false)}>
           <div className="mx-4 max-w-2xl rounded-2xl bg-card p-4 shadow-elevated" onClick={e => e.stopPropagation()}>
             <div className="mb-3 flex items-center justify-between">
               <h3 className="font-display font-semibold text-foreground">Live Snapshot</h3>

@@ -32,50 +32,66 @@ const Admin = () => {
     return null;
   }
 
-  const handleAddGuardian = (e: React.FormEvent) => {
+  const handleAddGuardian = async (e: React.FormEvent) => {
     e.preventDefault();
     const exists = users.some(u => u.email.toLowerCase() === form.email.toLowerCase());
     if (exists) {
       toast.error('A guardian with this email already exists');
       return;
     }
-    addGuardian({ ...form, linkedDevices: [] });
-    setForm({ name: '', email: '', password: '', phone: '' });
-    setTab('guardians');
-    toast.success('Guardian created successfully');
+    try {
+      await addGuardian({ ...form, linkedDevices: [] });
+      setForm({ name: '', email: '', password: '', phone: '' });
+      setTab('guardians');
+      toast.success('Guardian created successfully');
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to create guardian');
+    }
   };
 
-  const handleAddDevice = (e: React.FormEvent) => {
+  const handleAddDevice = async (e: React.FormEvent) => {
     e.preventDefault();
     if (devices.some(d => d.id === deviceId)) {
       toast.error('A device with this ID already exists');
       return;
     }
-    addDevice(deviceId);
-    setDeviceId('');
-    setTab('devices');
-    toast.success('Device registered successfully');
-  };
-
-  const handleLink = (e: React.FormEvent) => {
-    e.preventDefault();
-    linkDeviceToGuardian(linkForm.deviceId, linkForm.guardianId);
-    const guardian = guardians.find(g => g.id === linkForm.guardianId);
-    toast.success(`Device ${linkForm.deviceId} linked to ${guardian?.name || 'guardian'}`);
-    setLinkForm({ deviceId: '', guardianId: '' });
-    setTab('guardians');
-  };
-
-  const handleConfirmRemove = () => {
-    if (!confirmRemove) return;
-    if (confirmRemove.type === 'guardian') {
-      removeGuardian(confirmRemove.id);
-      toast.success(`Guardian ${confirmRemove.name} removed`);
-    } else {
-      removeDevice(confirmRemove.id);
-      toast.success(`Device ${confirmRemove.id} removed`);
+    try {
+      await addDevice(deviceId);
+      setDeviceId('');
+      setTab('devices');
+      toast.success('Device registered successfully');
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to register device');
     }
-    setConfirmRemove(null);
+  };
+
+  const handleLink = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      await linkDeviceToGuardian(linkForm.deviceId, linkForm.guardianId);
+      const guardian = guardians.find(g => g.id === linkForm.guardianId);
+      toast.success(`Device ${linkForm.deviceId} linked to ${guardian?.name || 'guardian'}`);
+      setLinkForm({ deviceId: '', guardianId: '' });
+      setTab('guardians');
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to link device');
+    }
+  };
+
+  const handleConfirmRemove = async () => {
+    if (!confirmRemove) return;
+    try {
+      if (confirmRemove.type === 'guardian') {
+        await removeGuardian(confirmRemove.id);
+        toast.success(`Guardian ${confirmRemove.name} removed`);
+      } else {
+        await removeDevice(confirmRemove.id);
+        toast.success(`Device ${confirmRemove.id} removed`);
+      }
+      setConfirmRemove(null);
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to remove');
+    }
   };
 
   const tabs: { id: TabId; label: string; icon: typeof Users }[] = [
@@ -145,7 +161,14 @@ const Admin = () => {
                         <span key={d} className="flex items-center gap-1 rounded-md bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">
                           {d}
                           <button
-                            onClick={() => { unlinkDeviceFromGuardian(d, g.id); toast.success(`Unlinked ${d}`); }}
+                            onClick={async () => {
+                              try {
+                                await unlinkDeviceFromGuardian(d, g.id);
+                                toast.success(`Unlinked ${d}`);
+                              } catch (error: any) {
+                                toast.error(error.message || 'Failed to unlink device');
+                              }
+                            }}
                             className="rounded p-0.5 hover:bg-primary/20"
                             title="Unlink device"
                           >
