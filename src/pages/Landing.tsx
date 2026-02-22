@@ -27,7 +27,7 @@ const Landing = () => {
       <nav className="fixed top-0 left-0 right-0 z-50 border-b border-border/50 bg-background/80 backdrop-blur-xl">
         <div className="container mx-auto flex items-center justify-between px-6 py-4">
           <div className="flex items-center gap-2">
-            <Eye className="h-7 w-7 text-primary" />
+            <img src="/logo.png" className="h-7 w-7 object-contain" alt="Sanjaya" />
             <span className="font-display text-xl font-bold text-foreground">Sanjaya</span>
           </div>
           <div className="hidden items-center gap-8 md:flex">
@@ -38,7 +38,7 @@ const Landing = () => {
           <div className="flex items-center gap-2">
             <ThemeToggle />
             <button onClick={() => navigate('/login')} className="rounded-lg bg-gradient-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground transition hover:opacity-90">
-            Guardian Login
+              Guardian Login
             </button>
           </div>
         </div>
@@ -127,7 +127,7 @@ const Landing = () => {
       <footer className="border-t border-border py-8">
         <div className="container mx-auto flex flex-col items-center justify-between gap-4 px-6 md:flex-row">
           <div className="flex items-center gap-2">
-            <Eye className="h-5 w-5 text-primary" />
+            <img src="/logo.png" className="h-5 w-5 object-contain" alt="Sanjaya" />
             <span className="font-display font-bold text-foreground">Sanjaya</span>
           </div>
           <p className="text-sm text-muted-foreground">© 2026 Sanjaya – Seeing Beyond Sight. All rights reserved.</p>

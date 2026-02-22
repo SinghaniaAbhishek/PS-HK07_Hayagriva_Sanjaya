@@ -18,12 +18,13 @@ import {
 type TabId = 'guardians' | 'devices' | 'add-guardian' | 'add-device' | 'link';
 
 const Admin = () => {
-  const { user, logout, users, devices, addGuardian, linkDeviceToGuardian, unlinkDeviceFromGuardian, removeGuardian, removeDevice, addDevice } = useAuth();
+  const { user, logout, users, devices, availableIoTSources, addGuardian, linkDeviceToGuardian, unlinkDeviceFromGuardian, removeGuardian, removeDevice, addDevice } = useAuth();
   const [confirmRemove, setConfirmRemove] = useState<{ type: 'guardian' | 'device'; id: string; name: string } | null>(null);
   const navigate = useNavigate();
   const [tab, setTab] = useState<TabId>('guardians');
   const [form, setForm] = useState({ name: '', email: '', password: '', phone: '' });
   const [deviceId, setDeviceId] = useState('');
+  const [dataSource, setDataSource] = useState('');
   const [linkForm, setLinkForm] = useState({ deviceId: '', guardianId: '' });
 
   const guardians = users.filter(u => u.role === 'guardian');
@@ -56,8 +57,9 @@ const Admin = () => {
       return;
     }
     try {
-      await addDevice(deviceId);
+      await addDevice(deviceId, dataSource);
       setDeviceId('');
+      setDataSource('');
       setTab('devices');
       toast.success('Device registered successfully');
     } catch (error: any) {
@@ -107,7 +109,7 @@ const Admin = () => {
       <header className="border-b border-border bg-card shadow-card">
         <div className="container mx-auto flex items-center justify-between px-6 py-4">
           <div className="flex items-center gap-3">
-            <Eye className="h-7 w-7 text-primary" />
+            <img src="/logo.png" className="h-7 w-7 object-contain" alt="Sanjaya" />
             <div>
               <h1 className="font-display text-lg font-bold text-foreground">Admin Panel</h1>
               <p className="text-xs text-muted-foreground">Manage guardians & devices</p>
@@ -197,6 +199,9 @@ const Admin = () => {
                       <p className="text-sm text-muted-foreground">Assigned to: {users.find(u => u.id === d.assignedTo)?.name || 'Unassigned'}</p>
                       <p className="text-sm text-muted-foreground">Battery: {d.battery}%</p>
                       <p className="text-sm text-muted-foreground">User: {d.userName || 'Not set'}</p>
+                      {d.dataSource && (
+                        <p className="text-sm text-primary">IoT Source: {d.dataSource}</p>
+                      )}
                     </div>
                     <button
                       onClick={() => setConfirmRemove({ type: 'device', id: d.id, name: d.id })}
@@ -237,10 +242,37 @@ const Admin = () => {
             <form onSubmit={handleAddDevice} className="space-y-4">
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-foreground">Device ID</label>
-                <input value={deviceId} onChange={e => setDeviceId(e.target.value)} required placeholder="e.g. STICK-003"
+                <input value={deviceId} onChange={e => setDeviceId(e.target.value)} required placeholder="e.g. sanjaya-1"
                   className="w-full rounded-lg border border-input bg-background px-4 py-3 text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-ring/20" />
               </div>
-              <button type="submit" className="w-full rounded-lg bg-gradient-primary py-3 font-semibold text-primary-foreground">Register Device</button>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-foreground">IoT Data Source</label>
+                {availableIoTSources.length > 0 ? (
+                  <select
+                    value={dataSource}
+                    onChange={e => setDataSource(e.target.value)}
+                    required
+                    className="w-full rounded-lg border border-input bg-background px-4 py-3 text-foreground focus:border-primary focus:outline-none"
+                  >
+                    <option value="">Select IoT device...</option>
+                    {availableIoTSources.map(source => (
+                      <option key={source} value={source}>{source}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <div className="rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm text-warning">
+                    No available IoT devices found in SmartStickData. Make sure your IoT device is sending data to Firebase.
+                  </div>
+                )}
+                <p className="mt-1.5 text-xs text-muted-foreground">Select the IoT device from SmartStickData in Firebase</p>
+              </div>
+              <button
+                type="submit"
+                disabled={availableIoTSources.length === 0}
+                className="w-full rounded-lg bg-gradient-primary py-3 font-semibold text-primary-foreground disabled:opacity-50"
+              >
+                Register Device
+              </button>
             </form>
           </div>
         )}

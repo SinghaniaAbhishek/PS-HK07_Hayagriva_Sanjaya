@@ -38,7 +38,7 @@ const Login = () => {
     <div className="flex min-h-screen">
       <div className="hidden w-1/2 items-center justify-center bg-gradient-hero lg:flex">
         <div className="animate-slide-up px-16 text-center">
-          <Eye className="mx-auto mb-6 h-16 w-16 text-primary-foreground/80" />
+          <img src="/logo.png" className="mx-auto mb-6 h-16 w-16 object-contain drop-shadow-md" alt="Sanjaya" />
           <h1 className="mb-4 font-display text-4xl font-bold text-primary-foreground">Sanjaya</h1>
           <p className="text-lg text-primary-foreground/70">Seeing Beyond Sight</p>
           <div className="mt-12 space-y-4 text-left text-primary-foreground/60">
@@ -50,7 +50,7 @@ const Login = () => {
       <div className="flex w-full items-center justify-center px-6 lg:w-1/2">
         <div className="w-full max-w-md animate-slide-up">
           <div className="mb-8 flex items-center gap-2 lg:hidden">
-            <Eye className="h-7 w-7 text-primary" />
+            <img src="/logo.png" className="h-7 w-7 object-contain" alt="Sanjaya" />
             <span className="font-display text-xl font-bold">Sanjaya</span>
           </div>
           <h2 className="mb-2 font-display text-3xl font-bold text-foreground">Welcome back</h2>

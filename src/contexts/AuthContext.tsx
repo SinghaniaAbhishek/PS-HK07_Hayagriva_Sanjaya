@@ -19,7 +19,7 @@ import {
   orderByChild,
   equalTo,
 } from 'firebase/database';
-import { auth, database } from '@/lib/firebase';
+import { auth, database, secondaryAuth } from '@/lib/firebase';
 
 export interface User {
   id: string;
@@ -43,6 +43,30 @@ export interface Device {
   movementStatus: boolean;
   lastUpdated: number;
   imageURL?: string;
+  // IoT data source mapping
+  dataSource?: string; // Maps to SmartStickData/{dataSource}
+  // Raw IoT sensor data
+  distance1_cm?: number;
+  distance2_cm?: number;
+  pitch?: number;
+  upTime?: number; // Device uptime in seconds
+  lastUpTime?: number; // Previous up_time value to detect changes
+  lastUpTimeTimestamp?: number; // When up_time last changed
+  fallHistory?: { timestamp: number; lat: number; lng: number }[];
+  distanceTravelled?: number; // Total distance travelled in km
+}
+
+// IoT sensor data from SmartStickData
+interface SmartStickIoTData {
+  distance1_cm?: number;
+  distance2_cm?: number;
+  fallDetected?: boolean;
+  latitude?: number;
+  longitude?: number;
+  pitch?: number;
+  uptime_seconds?: number;
+  current_time?: string;
+  distance_traveled_m?: number;
 }
 
 interface AuthContextType {
@@ -55,13 +79,15 @@ interface AuthContextType {
   isLoading: boolean;
   users: User[];
   devices: Device[];
+  availableIoTSources: string[]; // List of SmartStickData node names
   addGuardian: (guardian: Omit<User, 'id' | 'role'> & { password: string }) => Promise<void>;
   linkDeviceToGuardian: (deviceId: string, guardianId: string) => Promise<void>;
   unlinkDeviceFromGuardian: (deviceId: string, guardianId: string) => Promise<void>;
   removeGuardian: (guardianId: string) => Promise<void>;
   removeDevice: (deviceId: string) => Promise<void>;
-  addDevice: (deviceId: string) => Promise<void>;
+  addDevice: (deviceId: string, dataSource?: string) => Promise<void>;
   updateDeviceInfo: (deviceId: string, data: Partial<Device>) => Promise<void>;
+  addFallHistory: (deviceId: string, gps: { lat: number, lng: number }) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -78,7 +104,7 @@ const fetchUserData = async (firebaseUser: FirebaseUser): Promise<User | null> =
       const linkedDevicesArray = typeof linkedDevicesObj === 'object' && linkedDevicesObj !== null
         ? Object.values(linkedDevicesObj).filter((v): v is string => typeof v === 'string')
         : [];
-      
+
       return {
         id: firebaseUser.uid,
         email: firebaseUser.email || '',
@@ -100,6 +126,17 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [isLoading, setIsLoading] = useState(true);
   const [users, setUsers] = useState<User[]>([]);
   const [devices, setDevices] = useState<Device[]>([]);
+  const [iotData, setIotData] = useState<Record<string, SmartStickIoTData>>({});
+  // Track up_time changes per IoT source to detect online/offline
+  const [upTimeTracker, setUpTimeTracker] = useState<Record<string, { lastValue: number; lastChangeTime: number }>>({});
+  // Track GPS changes to detect if moving
+  const [gpsTracker, setGpsTracker] = useState<Record<string, { lat: number; lng: number; lastChangeTime: number }>>({});
+
+  // Reference trick so onValue listener doesn't need to depend on 'devices' state
+  const devicesRef = React.useRef<Device[]>([]);
+  useEffect(() => {
+    devicesRef.current = devices;
+  }, [devices]);
 
   const clearAuthError = () => setAuthError(null);
 
@@ -147,7 +184,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           const linkedDevicesArray = typeof linkedDevicesObj === 'object' && linkedDevicesObj !== null
             ? Object.values(linkedDevicesObj).filter((v): v is string => typeof v === 'string')
             : [];
-          
+
           usersData.push({
             id: child.key!,
             email: data.email || '',
@@ -180,13 +217,16 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             userName: data.userName || '',
             userPhone: data.userPhone || '',
             mentorPhone: data.mentorPhone || '',
-            gps: data.gps || { lat: 28.6139, lng: 77.2090 },
-            battery: data.battery ?? 100,
+            gps: data.gps || { lat: 19.3444, lng: 83.5684 },
+            battery: data.battery ?? 75,
             fallStatus: data.fallStatus || false,
             vibrationStatus: data.vibrationStatus || false,
             movementStatus: data.movementStatus || false,
             lastUpdated: data.lastUpdated || Date.now(),
             imageURL: data.imageURL,
+            dataSource: data.dataSource || '',
+            distanceTravelled: data.distanceTravelled || 0,
+            fallHistory: data.fallHistory ? Object.values(data.fallHistory).sort((a: any, b: any) => b.timestamp - a.timestamp) as { timestamp: number; lat: number; lng: number }[] : [],
           });
         });
         setDevices(devicesData);
@@ -197,6 +237,133 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     return () => off(devicesRef, 'value', unsubscribe);
   }, []);
+
+  // Listen to SmartStickData (IoT sensor data)
+  useEffect(() => {
+    const iotRef = ref(database, 'SmartStickData');
+    const unsubscribe = onValue(iotRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const data: Record<string, SmartStickIoTData> = {};
+        snapshot.forEach((child) => {
+          data[child.key!] = child.val();
+        });
+        setIotData(data);
+
+        // Track up_time changes
+        setUpTimeTracker(prev => {
+          const updated = { ...prev };
+          Object.entries(data).forEach(([source, iot]) => {
+            const currentUpTime = iot.uptime_seconds ?? 0;
+            const existing = prev[source];
+            if (!existing) {
+              let initialTime = 0;
+              if (iot.current_time) {
+                const deviceTime = new Date(iot.current_time.replace(' ', 'T')).getTime();
+                if (!isNaN(deviceTime) && Math.abs(Date.now() - deviceTime) < 60000) {
+                  initialTime = Date.now();
+                }
+              }
+              updated[source] = { lastValue: currentUpTime, lastChangeTime: initialTime };
+            } else if (currentUpTime !== existing.lastValue) {
+              updated[source] = { lastValue: currentUpTime, lastChangeTime: Date.now() };
+            }
+          });
+          return updated;
+        });
+
+        // Track GPS changes
+        setGpsTracker(prev => {
+          const updated = { ...prev };
+          Object.entries(data).forEach(([source, iot]) => {
+            const currentLat = Number(iot.latitude) || 0;
+            const currentLng = Number(iot.longitude) || 0;
+            const existing = prev[source];
+            if (!existing) {
+              updated[source] = { lat: currentLat, lng: currentLng, lastChangeTime: prev[source] ? prev[source].lastChangeTime : 0 };
+            } else if (currentLat !== existing.lat || currentLng !== existing.lng) {
+              updated[source] = { lat: currentLat, lng: currentLng, lastChangeTime: Date.now() };
+            }
+          });
+          return updated;
+        });
+      } else {
+        setIotData({});
+      }
+    });
+
+    return () => off(iotRef, 'value', unsubscribe);
+  }, []);
+
+  // Removed backend overwriting logic to keep online status clean and simple natively in the UI
+
+  // Merge IoT data with devices
+  const mergedDevices: Device[] = devices.map(device => {
+    const iotSource = device.dataSource;
+    if (iotSource && iotData[iotSource]) {
+      const iot = iotData[iotSource];
+      const tracker = upTimeTracker[iotSource];
+      const lastChangeTime = tracker?.lastChangeTime || 0;
+      // Device is online if up_time changed within the last 30 seconds
+      const isOnline = lastChangeTime > 0 && (Date.now() - lastChangeTime < 30000);
+
+      const movementTracker = gpsTracker[iotSource];
+      const lastGpsChangeTime = movementTracker && movementTracker.lastChangeTime > 0 ? movementTracker.lastChangeTime : 0;
+      // Device is moving if GPS coordinates updated their value within the last 30 seconds
+      const isMoving = lastGpsChangeTime > 0 && (Date.now() - lastGpsChangeTime < 30000);
+
+      const lat = iot.latitude ? Number(iot.latitude) : device.gps.lat;
+      const lng = iot.longitude ? Number(iot.longitude) : device.gps.lng;
+
+      if (!isOnline) {
+        let fallbackTime = device.lastUpdated;
+        if (iot.current_time) {
+          const deviceTime = new Date(iot.current_time.replace(' ', 'T')).getTime();
+          if (!isNaN(deviceTime)) fallbackTime = deviceTime;
+        }
+
+        return {
+          ...device,
+          gps: {
+            lat: lat !== 0 ? lat : device.gps.lat,
+            lng: lng !== 0 ? lng : device.gps.lng,
+          },
+          fallStatus: false,
+          vibrationStatus: false,
+          movementStatus: false,
+          distance1_cm: 0,
+          distance2_cm: 0,
+          pitch: 0,
+          upTime: iot.uptime_seconds,
+          distanceTravelled: iot.distance_traveled_m !== undefined ? iot.distance_traveled_m : device.distanceTravelled,
+          lastUpdated: fallbackTime,
+        };
+      }
+
+      return {
+        ...device,
+        gps: {
+          lat: lat !== 0 ? lat : device.gps.lat,
+          lng: lng !== 0 ? lng : device.gps.lng,
+        },
+        fallStatus: iot.fallDetected ?? device.fallStatus,
+        vibrationStatus: (iot.distance1_cm !== undefined && iot.distance1_cm < 100) ||
+          (iot.distance2_cm !== undefined && iot.distance2_cm < 100) ||
+          device.vibrationStatus,
+        movementStatus: isMoving,
+        distance1_cm: iot.distance1_cm,
+        distance2_cm: iot.distance2_cm,
+        pitch: iot.pitch,
+        upTime: iot.uptime_seconds,
+        distanceTravelled: iot.distance_traveled_m !== undefined ? iot.distance_traveled_m : device.distanceTravelled,
+        lastUpdated: Date.now(),
+      };
+    }
+    return device;
+  });
+
+  // Get available IoT sources (SmartStickData nodes not yet assigned to any device)
+  const usedSources = devices.map(d => d.dataSource).filter(Boolean);
+  const availableIoTSources = Object.keys(iotData).filter(source => !usedSources.includes(source));
 
   const login = async (email: string, password: string): Promise<boolean> => {
     try {
@@ -238,11 +405,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         throw new Error('Email already exists');
       }
 
-      // Create Firebase Auth user
-      const userCredential = await createUserWithEmailAndPassword(auth, data.email, data.password);
+      // Create Firebase Auth user using secondary auth (doesn't affect main auth state)
+      const userCredential = await createUserWithEmailAndPassword(secondaryAuth, data.email, data.password);
       const uid = userCredential.user.uid;
 
-      // Create user record in database
+      // Create user record in database (still authenticated as admin on main auth)
       await set(ref(database, `users/${uid}`), {
         email: data.email.toLowerCase(),
         name: data.name,
@@ -250,8 +417,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         phone: data.phone || '',
         linkedDevices: [],
       });
+
+      // Sign out from secondary auth
+      await signOut(secondaryAuth);
     } catch (error: any) {
       console.error('Error adding guardian:', error);
+      // Make sure to sign out from secondary auth on error too
+      try { await signOut(secondaryAuth); } catch { }
       throw error;
     }
   };
@@ -283,7 +455,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const guardianRef = ref(database, `users/${guardianId}/linkedDevices`);
       const guardianSnapshot = await get(guardianRef);
       const linkedDevices = guardianSnapshot.exists() ? guardianSnapshot.val() || {} : {};
-      
+
       // Check if already linked
       const isLinked = Object.values(linkedDevices).includes(deviceId);
       if (!isLinked) {
@@ -334,7 +506,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const snapshot = await get(guardianRef);
       if (snapshot.exists()) {
         const linkedDevices = snapshot.val().linkedDevices || {};
-        
+
         // Unassign all devices
         const deviceUpdates: Record<string, any> = {};
         Object.values(linkedDevices).forEach((deviceId) => {
@@ -347,7 +519,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
       // Remove user record
       await remove(ref(database, `users/${guardianId}`));
-      
+
       // Note: Firebase Auth user deletion requires Admin SDK or user action
       // For now, we only remove the database record
     } catch (error) {
@@ -361,7 +533,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       // Find and remove from all guardians' linkedDevices
       const usersRef = ref(database, 'users');
       const usersSnapshot = await get(usersRef);
-      
+
       const updates: Record<string, any> = {};
       if (usersSnapshot.exists()) {
         usersSnapshot.forEach((userSnapshot) => {
@@ -386,7 +558,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
-  const addDevice = async (deviceId: string): Promise<void> => {
+  const addDevice = async (deviceId: string, dataSource?: string): Promise<void> => {
     try {
       const deviceRef = ref(database, `devices/${deviceId}`);
       const snapshot = await get(deviceRef);
@@ -399,12 +571,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         userName: '',
         userPhone: '',
         mentorPhone: '',
-        gps: { lat: 28.6139, lng: 77.2090 },
-        battery: 100,
+        gps: { lat: 19.3444, lng: 83.5684 },
+        battery: 75,
         fallStatus: false,
         vibrationStatus: false,
         movementStatus: false,
         lastUpdated: Date.now(),
+        dataSource: dataSource || '',
       });
     } catch (error) {
       console.error('Error adding device:', error);
@@ -425,6 +598,22 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
+  const addFallHistory = async (deviceId: string, gps: { lat: number, lng: number }): Promise<void> => {
+    try {
+      const historyRef = ref(database, `devices/${deviceId}/fallHistory`);
+      const newKey = push(historyRef).key;
+      if (newKey) {
+        await set(ref(database, `devices/${deviceId}/fallHistory/${newKey}`), {
+          timestamp: Date.now(),
+          lat: gps.lat,
+          lng: gps.lng
+        });
+      }
+    } catch (error) {
+      console.error('Error adding fall history:', error);
+    }
+  };
+
   return (
     <AuthContext.Provider value={{
       user,
@@ -435,7 +624,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       logout,
       isLoading,
       users,
-      devices,
+      devices: mergedDevices,
+      availableIoTSources,
       addGuardian,
       linkDeviceToGuardian,
       unlinkDeviceFromGuardian,
@@ -443,6 +633,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       removeDevice,
       addDevice,
       updateDeviceInfo,
+      addFallHistory,
     }}>
       {children}
     </AuthContext.Provider>

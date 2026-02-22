@@ -70,7 +70,7 @@ const AdminSetup = () => {
     <div className="flex min-h-screen items-center justify-center bg-background p-4">
       <div className="w-full max-w-md rounded-2xl border border-border bg-card p-8 shadow-card">
         <div className="mb-6 flex items-center gap-2">
-          <Eye className="h-8 w-8 text-primary" />
+          <img src="/logo.png" className="h-8 w-8 object-contain" alt="Sanjaya" />
           <h1 className="font-display text-2xl font-bold text-foreground">Admin Setup</h1>
         </div>
         <p className="mb-6 text-sm text-muted-foreground">
